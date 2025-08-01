@@ -27,7 +27,7 @@ import java.util.Locale;
 public class MainActivity extends AppCompatActivity {
     
     private static final int SMS_PERMISSION_CODE = 1;
-    private static final String PROBE_URL = "https://eds-ks.com/api/sms_prober.php";
+    private static final String PROBE_URL = "https://eds-ks.com/api/sms/prober.php";
     private static final long PROBE_INTERVAL = 60000; // 60 seconds
     
     private EditText urlInput;

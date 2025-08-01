@@ -32,7 +32,7 @@ An Android application that automatically probes a URL endpoint and sends SMS me
 
 ## API Format
 
-The app expects a JSON response from `https://eds-ks.com/api/sms_prober.php` in this format:
+The app expects a JSON response from `https://eds-ks.com/api/sms/prober.php` in this format:
 
 ```json
 {
