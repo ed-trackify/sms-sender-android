@@ -79,12 +79,18 @@ captures/
 # Documentation and development files (keep only essential ones)
 *.md
 !README.md
+!CLAUDE.md
 !BACKEND_CRITICAL_CHANGES_NEEDED.md
 
-# JDK/Java installation directories
-java*/
-jdk*/
-openjdk*/
+# JDK/Java installation directories and archives
+/java*/
+/jdk*/
+/jdk-*/
+/openjdk*/
+/openlogic-openjdk-*/
+*.tar.gz
+*.zip
+/commandlinetools-linux-*
 
 # IDE files
 .vscode/

@@ -1,3 +1,39 @@
 <resources>
-    <string name="app_name">SMS Sender</string>
+    <string name="app_name">MEX SMS Gateway</string>
+    
+    <!-- Main Screen -->
+    <string name="title_sms_sender">SMS Sender</string>
+    <string name="subtitle_automated_messaging">Automated Messaging Service</string>
+    
+    <!-- Buttons -->
+    <string name="btn_start_probing">Start Probing</string>
+    <string name="btn_stop_probing">Stop Probing</string>
+    
+    <!-- Status -->
+    <string name="status_ready">Ready</string>
+    <string name="status_probing">Probing...</string>
+    <string name="status_sending">Sending SMS</string>
+    <string name="status_error">Error</string>
+    
+    <!-- Permissions -->
+    <string name="permission_sms_granted">SMS Permission Granted</string>
+    <string name="permission_sms_denied">SMS Permission Required</string>
+    
+    <!-- Network Status -->
+    <string name="network_connected">Connected</string>
+    <string name="network_disconnected">No Connection</string>
+    
+    <!-- Counters -->
+    <string name="counter_sent">Sent</string>
+    <string name="counter_failed">Failed</string>
+    <string name="counter_pending">Pending</string>
+    
+    <!-- Log Section -->
+    <string name="log_title">Activity Log</string>
+    <string name="log_placeholder">Activity logs will appear here...</string>
+    
+    <!-- Cards -->
+    <string name="card_status">System Status</string>
+    <string name="card_statistics">Statistics</string>
+    <string name="card_controls">Controls</string>
 </resources>

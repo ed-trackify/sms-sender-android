@@ -3,8 +3,11 @@ package com.example.smssender;
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.os.AsyncTask;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.PowerManager;
+import android.provider.Settings;
 import android.telephony.SmsManager;
 import android.view.View;
 import android.widget.Button;
@@ -13,6 +16,11 @@ import android.widget.TextView;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.content.Context;
+import android.app.ActivityManager;
+import android.net.Uri;
 import org.json.JSONObject;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -27,13 +35,28 @@ import java.util.Locale;
 public class MainActivity extends AppCompatActivity {
     
     private static final int SMS_PERMISSION_CODE = 1;
-    private static final String PROBE_URL = "https://eds-ks.com/api/sms/prober.php";
-    private static final long PROBE_INTERVAL = 60000; // 60 seconds
     
-    private EditText urlInput;
     private Button probeButton;
+    private EditText intervalInput;
     private TextView statusText;
     private TextView logText;
+    private TextView permissionStatus;
+    private TextView networkStatus;
+    private TextView smsSentCount;
+    private TextView smsPendingCount;
+    private TextView smsFailedCount;
+    private TextView totalRepliesCount;
+    private TextView repliesQueuedCount;
+    private TextView pinConfirmationsCount;
+    private TextView lastReplySync;
+    private TextView appNameText;
+    private TextView appSubtitleText;
+    private int sentCounter = 0;
+    private int pendingCounter = 0;
+    private int failedCounter = 0;
+    private SharedPreferences logPrefs;
+    private SharedPreferences replyStatsPrefs;
+    private Handler logUpdateHandler = new Handler();
     private SimpleDateFormat dateFormat = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
     private Handler handler = new Handler();
     private boolean isProbing = false;
@@ -44,72 +67,237 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         
-        urlInput = findViewById(R.id.urlInput);
         probeButton = findViewById(R.id.probeButton);
+        intervalInput = findViewById(R.id.intervalInput);
         statusText = findViewById(R.id.statusText);
         logText = findViewById(R.id.logText);
+        permissionStatus = findViewById(R.id.permissionStatus);
+        networkStatus = findViewById(R.id.networkStatus);
+        smsSentCount = findViewById(R.id.smsSentCount);
+        smsPendingCount = findViewById(R.id.smsPendingCount);
+        smsFailedCount = findViewById(R.id.smsFailedCount);
+        totalRepliesCount = findViewById(R.id.totalRepliesCount);
+        repliesQueuedCount = findViewById(R.id.repliesQueuedCount);
+        pinConfirmationsCount = findViewById(R.id.pinConfirmationsCount);
+        lastReplySync = findViewById(R.id.lastReplySync);
+        appNameText = findViewById(R.id.appNameText);
+        appSubtitleText = findViewById(R.id.appSubtitleText);
         
-        urlInput.setText(PROBE_URL);
-        urlInput.setEnabled(false);
+        logPrefs = getSharedPreferences("SmsProbeLog", MODE_PRIVATE);
+        replyStatsPrefs = getSharedPreferences("ReplyStats", MODE_PRIVATE);
+        
+        // Set app name and subtitle from config
+        appNameText.setText(AppConfig.APP_NAME);
+        appSubtitleText.setText(AppConfig.APP_SUBTITLE);
+        
+        // Set default interval from config
+        intervalInput.setText(String.valueOf(AppConfig.DEFAULT_PROBE_INTERVAL));
         
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) 
+                != PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.RECEIVE_SMS) 
+                != PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.READ_SMS) 
                 != PackageManager.PERMISSION_GRANTED) {
+            permissionStatus.setText("Not Granted");
+            permissionStatus.setTextColor(getResources().getColor(android.R.color.holo_red_dark));
             ActivityCompat.requestPermissions(this, 
-                new String[]{Manifest.permission.SEND_SMS}, SMS_PERMISSION_CODE);
+                new String[]{
+                    Manifest.permission.SEND_SMS,
+                    Manifest.permission.RECEIVE_SMS,
+                    Manifest.permission.READ_SMS
+                }, SMS_PERMISSION_CODE);
+        } else {
+            permissionStatus.setText("Granted");
+            permissionStatus.setTextColor(getResources().getColor(android.R.color.holo_green_dark));
         }
         
-        probeRunnable = new Runnable() {
-            @Override
-            public void run() {
-                if (isProbing) {
-                    new ProbeUrlTask().execute(PROBE_URL);
-                    handler.postDelayed(this, PROBE_INTERVAL);
-                }
-            }
-        };
+        // Update button state based on service status
+        updateButtonState();
+        
+        // Request battery optimization exemption for continuous background operation
+        requestBatteryOptimizationExemption();
+        
+        // Start updating logs from service
+        startLogUpdates();
         
         probeButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                if (!isProbing) {
-                    startProbing();
+                if (!isServiceRunning()) {
+                    startBackgroundService();
                 } else {
-                    stopProbing();
+                    stopBackgroundService();
                 }
             }
         });
     }
     
     @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        stopProbing();
+    protected void onResume() {
+        super.onResume();
+        updateButtonState();
+        updateLogsFromService();
+        updateReplyStatistics();
     }
     
-    private void startProbing() {
-        isProbing = true;
-        probeButton.setText("Stop Probing");
-        updateStatus("Started probing every 60 seconds");
-        addLog("Started automatic probing");
-        handler.post(probeRunnable);
+    private void requestBatteryOptimizationExemption() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
+            String packageName = getPackageName();
+            
+            if (!powerManager.isIgnoringBatteryOptimizations(packageName)) {
+                try {
+                    Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                    intent.setData(Uri.parse("package:" + packageName));
+                    startActivity(intent);
+                    statusText.setText("Requesting battery optimization exemption for continuous operation");
+                } catch (Exception e) {
+                    // If the direct intent fails, open battery optimization settings
+                    try {
+                        Intent intent = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+                        startActivity(intent);
+                        statusText.setText("Please disable battery optimization for this app");
+                    } catch (Exception ex) {
+                        statusText.setText("Unable to request battery optimization exemption");
+                    }
+                }
+            } else {
+                statusText.setText("Battery optimizations already disabled - Service will run continuously");
+            }
+        }
     }
     
-    private void stopProbing() {
-        isProbing = false;
-        probeButton.setText("Start Probing");
-        updateStatus("Stopped probing");
-        addLog("Stopped automatic probing");
-        handler.removeCallbacks(probeRunnable);
+    private void startBackgroundService() {
+        String intervalStr = intervalInput.getText().toString();
+        long interval = AppConfig.DEFAULT_PROBE_INTERVAL;
+        
+        try {
+            interval = Long.parseLong(intervalStr);
+            if (interval < AppConfig.MIN_PROBE_INTERVAL) {
+                interval = AppConfig.MIN_PROBE_INTERVAL;
+                intervalInput.setText(String.valueOf(AppConfig.MIN_PROBE_INTERVAL));
+            } else if (interval > AppConfig.MAX_PROBE_INTERVAL) {
+                interval = AppConfig.MAX_PROBE_INTERVAL;
+                intervalInput.setText(String.valueOf(AppConfig.MAX_PROBE_INTERVAL));
+            }
+        } catch (Exception e) {
+            interval = AppConfig.DEFAULT_PROBE_INTERVAL;
+            intervalInput.setText(String.valueOf(AppConfig.DEFAULT_PROBE_INTERVAL));
+        }
+        
+        Intent serviceIntent = new Intent(this, SmsProbeService.class);
+        serviceIntent.putExtra("interval", interval * 1000);
+        
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent);
+        } else {
+            startService(serviceIntent);
+        }
+        
+        updateStatus("Background service started");
+        addLog("Started background service (interval: " + interval + "s)");
+        updateButtonState();
+    }
+    
+    private void stopBackgroundService() {
+        Intent serviceIntent = new Intent(this, SmsProbeService.class);
+        stopService(serviceIntent);
+        
+        updateStatus("Background service stopped");
+        addLog("Stopped background service");
+        updateButtonState();
+    }
+    
+    private boolean isServiceRunning() {
+        ActivityManager manager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+        for (ActivityManager.RunningServiceInfo service : manager.getRunningServices(Integer.MAX_VALUE)) {
+            if (SmsProbeService.class.getName().equals(service.service.getClassName())) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    private void updateButtonState() {
+        if (isServiceRunning()) {
+            probeButton.setText("Stop Background Service");
+            probeButton.setBackgroundColor(getResources().getColor(android.R.color.holo_red_dark));
+            statusText.setText("Status: Service Running");
+        } else {
+            probeButton.setText("Start Background Service");
+            probeButton.setBackgroundColor(getResources().getColor(android.R.color.holo_blue_dark));
+            statusText.setText("Status: Service Stopped");
+        }
+    }
+    
+    private void startLogUpdates() {
+        logUpdateHandler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                updateLogsFromService();
+                updateReplyStatistics();
+                logUpdateHandler.postDelayed(this, 2000); // Update every 2 seconds
+            }
+        }, 1000);
+    }
+    
+    private void updateLogsFromService() {
+        String logs = logPrefs.getString("log", "");
+        if (!logs.isEmpty()) {
+            logText.setText(logs);
+        }
+    }
+    
+    private void updateReplyStatistics() {
+        // Update total replies
+        int totalReplies = replyStatsPrefs.getInt("total_replies", 0);
+        totalRepliesCount.setText(String.valueOf(totalReplies));
+        
+        // Update PIN confirmations
+        int pinConfirmations = replyStatsPrefs.getInt("reply_count_pin_confirmation", 0);
+        pinConfirmationsCount.setText(String.valueOf(pinConfirmations));
+        
+        // Update queue size
+        try {
+            ReplyQueueManager queueManager = ReplyQueueManager.getInstance(this);
+            int queueSize = queueManager.getQueueSize();
+            repliesQueuedCount.setText(String.valueOf(queueSize));
+        } catch (Exception e) {
+            repliesQueuedCount.setText("0");
+        }
+        
+        // Update last sync time
+        long lastSyncTime = replyStatsPrefs.getLong("last_reply_sync", 0);
+        if (lastSyncTime > 0) {
+            Date syncDate = new Date(lastSyncTime);
+            SimpleDateFormat format = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
+            lastReplySync.setText(format.format(syncDate));
+        } else {
+            lastReplySync.setText("Never");
+        }
     }
     
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == SMS_PERMISSION_CODE) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                updateStatus("SMS permission granted");
+            boolean allGranted = true;
+            for (int result : grantResults) {
+                if (result != PackageManager.PERMISSION_GRANTED) {
+                    allGranted = false;
+                    break;
+                }
+            }
+            
+            if (allGranted) {
+                updateStatus("All SMS permissions granted");
+                permissionStatus.setText("Granted");
+                permissionStatus.setTextColor(getResources().getColor(android.R.color.holo_green_dark));
             } else {
-                updateStatus("SMS permission denied");
+                updateStatus("Some SMS permissions denied");
+                permissionStatus.setText("Not Granted");
+                permissionStatus.setTextColor(getResources().getColor(android.R.color.holo_red_dark));
             }
         }
     }
@@ -203,17 +391,38 @@ public class MainActivity extends AppCompatActivity {
     
     private void sendSMS(String phoneNumber, String message, String shipmentId) {
         try {
+            pendingCounter++;
+            updateCounters();
+            
             SmsManager smsManager = SmsManager.getDefault();
             smsManager.sendTextMessage(phoneNumber, null, message, null, null);
             updateStatus("SMS sent successfully");
             addLog("SMS sent to " + phoneNumber);
+            
+            pendingCounter--;
+            sentCounter++;
+            updateCounters();
             
             // Send response back to server
             new SendResponseTask().execute(shipmentId, message);
         } catch (Exception e) {
             updateStatus("Failed to send SMS");
             addLog("SMS Error: " + e.getMessage());
+            pendingCounter--;
+            failedCounter++;
+            updateCounters();
         }
+    }
+    
+    private void updateCounters() {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                smsSentCount.setText(String.valueOf(sentCounter));
+                smsPendingCount.setText(String.valueOf(pendingCounter));
+                smsFailedCount.setText(String.valueOf(failedCounter));
+            }
+        });
     }
     
     private class SendResponseTask extends AsyncTask<String, Void, Boolean> {
@@ -224,7 +433,7 @@ public class MainActivity extends AppCompatActivity {
             String smsMessage = params[1];
             
             try {
-                URL url = new URL(PROBE_URL);
+                URL url = new URL(AppConfig.PROBE_ENDPOINT);
                 HttpURLConnection connection = (HttpURLConnection) url.openConnection();
                 connection.setRequestMethod("POST");
                 connection.setDoOutput(true);
