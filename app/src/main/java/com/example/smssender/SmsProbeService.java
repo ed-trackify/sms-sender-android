@@ -258,7 +258,7 @@ public class SmsProbeService extends Service {
                         }
                     } else if (responseCode == 204) {
                         // No content - no pending SMS
-                        logMessage("No pending SMS messages");
+                        // Don't log "no pending" messages to avoid log spam
                     } else if (responseCode == 401) {
                         logMessage("Authentication failed - check API key");
                     }
@@ -272,12 +272,22 @@ public class SmsProbeService extends Service {
     private void processSmsRequest(String jsonResponse) {
         try {
             JSONObject json = new JSONObject(jsonResponse);
-            String phone = json.getString("phone");
+            String originalPhone = json.getString("phone");
+            
+            // Log original phone number
+            logMessage("Original phone from server: " + originalPhone);
+            
+            // Clean phone number - just remove spaces and dashes, keep as is
+            String phone = originalPhone.trim();
+            phone = phone.replaceAll("[\\s-]", "");
+            
+            logMessage("Cleaned phone for sending: " + phone);
+            
             String message = json.getString("message");
             int queueId = json.getInt("queue_id");
             long shipmentId = json.getLong("shipment_id");
             
-            logMessage("SMS Task - Queue: " + queueId + ", Phone: " + phone);
+            logMessage("SMS Task - Queue: " + queueId + ", Phone: " + phone + ", Length: " + phone.length());
             
             // Store SMS details for tracking
             PendingSms pendingSms = new PendingSms(queueId, shipmentId, phone, message);
@@ -322,8 +332,46 @@ public class SmsProbeService extends Service {
             PendingIntent deliveredPI = PendingIntent.getBroadcast(this, queueId + 10000, deliveryIntent, 
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
             
-            // Send SMS
-            smsManager.sendTextMessage(phone, null, message, sentPI, deliveredPI);
+            // Log before sending
+            logMessage("Attempting to send SMS to: '" + phone + "' (length: " + phone.length() + ")");
+            logMessage("Message length: " + message.length() + " chars");
+            
+            try {
+                // Check if message needs to be split (SMS limit is 160 chars for ASCII, 70 for Unicode)
+                ArrayList<String> parts = smsManager.divideMessage(message);
+                if (parts.size() > 1) {
+                    // For multipart messages, create PendingIntents for each part
+                    ArrayList<PendingIntent> sentIntents = new ArrayList<>();
+                    ArrayList<PendingIntent> deliveryIntents = new ArrayList<>();
+                    
+                    // Only add PendingIntent for the last part to avoid duplicate status updates
+                    for (int i = 0; i < parts.size(); i++) {
+                        if (i == parts.size() - 1) {
+                            // Last part - add actual intents
+                            sentIntents.add(sentPI);
+                            deliveryIntents.add(deliveredPI);
+                        } else {
+                            // Other parts - add null to skip status updates
+                            sentIntents.add(null);
+                            deliveryIntents.add(null);
+                        }
+                    }
+                    
+                    logMessage("Sending multipart SMS (" + parts.size() + " parts) to: " + phone);
+                    smsManager.sendMultipartTextMessage(phone, null, parts, sentIntents, deliveryIntents);
+                } else {
+                    // Send single SMS
+                    smsManager.sendTextMessage(phone, null, message, sentPI, deliveredPI);
+                }
+                
+                logMessage("SMS send command executed for: " + phone);
+            } catch (Exception e) {
+                logMessage("SMS sending exception: " + e.getMessage() + " for phone: " + phone);
+                failedCounter++;
+                updateNotification();
+                reportStatus(queueId, phone, "failed", shipmentId, "EXCEPTION: " + e.getMessage(), null, null, null, message);
+                pendingSmsMap.remove(queueId);
+            }
             
         } catch (Exception e) {
             logMessage("SMS Send Error: " + e.getMessage());
@@ -418,12 +466,16 @@ public class SmsProbeService extends Service {
                             jsonBody = array.toString();
                         }
                         
+                        logMessage("Sending status update to: " + PROBE_URL);
+                        logMessage("Status update data: " + jsonBody.substring(0, Math.min(jsonBody.length(), 200)));
+                        
                         URL url = new URL(PROBE_URL);
                         HttpURLConnection connection = (HttpURLConnection) url.openConnection();
                         connection.setRequestMethod("POST");
                         connection.setRequestProperty("X-API-Key", API_KEY);
                         connection.setRequestProperty("Content-Type", "application/json");
                         connection.setDoOutput(true);
+                        connection.setDoInput(true);
                         
                         OutputStream os = connection.getOutputStream();
                         os.write(jsonBody.getBytes("UTF-8"));
@@ -432,10 +484,21 @@ public class SmsProbeService extends Service {
                         
                         int responseCode = connection.getResponseCode();
                         
+                        // Read response
+                        BufferedReader reader = new BufferedReader(new InputStreamReader(
+                            responseCode == HttpURLConnection.HTTP_OK ? connection.getInputStream() : connection.getErrorStream()
+                        ));
+                        StringBuilder response = new StringBuilder();
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            response.append(line);
+                        }
+                        reader.close();
+                        
                         if (responseCode == HttpURLConnection.HTTP_OK) {
-                            logMessage("Status batch sent: " + updates.size() + " updates");
+                            logMessage("Status batch sent: " + updates.size() + " updates. Response: " + response.toString());
                         } else {
-                            logMessage("Status update failed: " + responseCode);
+                            logMessage("Status update failed: " + responseCode + ". Error: " + response.toString());
                             // Re-add to pending for retry
                             synchronized (pendingStatusUpdates) {
                                 pendingStatusUpdates.addAll(updates);
@@ -480,7 +543,7 @@ public class SmsProbeService extends Service {
                 case SmsManager.RESULT_ERROR_GENERIC_FAILURE:
                     failedCounter++;
                     updateNotification();
-                    logMessage("SMS failed (Generic): Queue " + queueId);
+                    logMessage("SMS failed (Generic): Queue " + queueId + ", Phone: '" + phone + "', Result code: " + getResultCode());
                     reportStatus(queueId, phone, "failed", shipmentId, "GENERIC_FAILURE", sentTimestamp, null, null, message);
                     pendingSmsMap.remove(queueId);
                     break;
@@ -591,6 +654,13 @@ public class SmsProbeService extends Service {
     }
     
     private void logMessage(String message) {
+        // Check if logging is enabled
+        SharedPreferences settingsPrefs = getSharedPreferences("AppSettings", MODE_PRIVATE);
+        boolean loggingEnabled = settingsPrefs.getBoolean("logging_enabled", AppConfig.LOGGING_ENABLED_DEFAULT);
+        if (!loggingEnabled) {
+            return;
+        }
+        
         String timestamp = dateFormat.format(new Date());
         String logEntry = timestamp + " - " + message;
         
@@ -599,17 +669,22 @@ public class SmsProbeService extends Service {
         String currentLog = prefs.getString("log", "");
         String newLog = logEntry + "\n" + currentLog;
         
-        // Keep only last 100 lines
+        // Keep only last MAX_LOG_ENTRIES lines or MAX_LOG_SIZE characters, whichever is smaller
         String[] lines = newLog.split("\n");
-        if (lines.length > 100) {
-            StringBuilder trimmedLog = new StringBuilder();
-            for (int i = 0; i < 100; i++) {
-                trimmedLog.append(lines[i]).append("\n");
+        StringBuilder trimmedLog = new StringBuilder();
+        int lineCount = 0;
+        int charCount = 0;
+        
+        for (String line : lines) {
+            if (lineCount >= AppConfig.MAX_LOG_ENTRIES || charCount + line.length() > AppConfig.MAX_LOG_SIZE) {
+                break;
             }
-            newLog = trimmedLog.toString();
+            trimmedLog.append(line).append("\n");
+            lineCount++;
+            charCount += line.length() + 1;
         }
         
-        prefs.edit().putString("log", newLog).apply();
+        prefs.edit().putString("log", trimmedLog.toString()).apply();
     }
     
     @Override
@@ -634,6 +709,34 @@ public class SmsProbeService extends Service {
         }
         
         stopForeground(true);
+    }
+    
+    /**
+     * Format phone number for local sending
+     * Removes country codes and ensures proper local format
+     */
+    private String formatPhoneNumberForLocal(String phone) {
+        // Remove all non-numeric characters except +
+        phone = phone.replaceAll("[^0-9+]", "");
+        
+        // Remove North Macedonia country code if present
+        if (phone.startsWith("+389")) {
+            phone = "0" + phone.substring(4);
+        } else if (phone.startsWith("389")) {
+            phone = "0" + phone.substring(3);
+        } else if (phone.startsWith("00389")) {
+            phone = "0" + phone.substring(5);
+        }
+        
+        // Ensure number starts with 0 for local format (if it's not already international)
+        if (!phone.startsWith("0") && !phone.startsWith("+")) {
+            // If it's a 7 or 8 digit number starting with 7 (mobile), add 0
+            if (phone.startsWith("7") && (phone.length() == 8 || phone.length() == 7)) {
+                phone = "0" + phone;
+            }
+        }
+        
+        return phone;
     }
     
     @Override

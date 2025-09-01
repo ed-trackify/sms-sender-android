@@ -13,6 +13,8 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
+import android.widget.CheckBox;
+import android.widget.CompoundButton;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -38,6 +40,7 @@ public class MainActivity extends AppCompatActivity {
     
     private Button probeButton;
     private EditText intervalInput;
+    private EditText replyIntervalInput;
     private TextView statusText;
     private TextView logText;
     private TextView permissionStatus;
@@ -51,6 +54,12 @@ public class MainActivity extends AppCompatActivity {
     private TextView lastReplySync;
     private TextView appNameText;
     private TextView appSubtitleText;
+    private CheckBox enableLoggingCheckbox;
+    private Button smsLogTab;
+    private Button replyLogTab;
+    private boolean showingSmsLog = true;
+    private SharedPreferences settingsPrefs;
+    private SharedPreferences replyLogPrefs;
     private int sentCounter = 0;
     private int pendingCounter = 0;
     private int failedCounter = 0;
@@ -69,6 +78,7 @@ public class MainActivity extends AppCompatActivity {
         
         probeButton = findViewById(R.id.probeButton);
         intervalInput = findViewById(R.id.intervalInput);
+        replyIntervalInput = findViewById(R.id.replyIntervalInput);
         statusText = findViewById(R.id.statusText);
         logText = findViewById(R.id.logText);
         permissionStatus = findViewById(R.id.permissionStatus);
@@ -82,16 +92,56 @@ public class MainActivity extends AppCompatActivity {
         lastReplySync = findViewById(R.id.lastReplySync);
         appNameText = findViewById(R.id.appNameText);
         appSubtitleText = findViewById(R.id.appSubtitleText);
+        enableLoggingCheckbox = findViewById(R.id.enableLoggingCheckbox);
+        smsLogTab = findViewById(R.id.smsLogTab);
+        replyLogTab = findViewById(R.id.replyLogTab);
         
         logPrefs = getSharedPreferences("SmsProbeLog", MODE_PRIVATE);
+        replyLogPrefs = getSharedPreferences("ReplyLog", MODE_PRIVATE);
         replyStatsPrefs = getSharedPreferences("ReplyStats", MODE_PRIVATE);
+        settingsPrefs = getSharedPreferences("AppSettings", MODE_PRIVATE);
         
         // Set app name and subtitle from config
         appNameText.setText(AppConfig.APP_NAME);
         appSubtitleText.setText(AppConfig.APP_SUBTITLE);
         
-        // Set default interval from config
+        // Set default intervals from config
         intervalInput.setText(String.valueOf(AppConfig.DEFAULT_PROBE_INTERVAL));
+        replyIntervalInput.setText(String.valueOf(AppConfig.DEFAULT_REPLY_INTERVAL));
+        
+        // Set up logging checkbox
+        boolean loggingEnabled = settingsPrefs.getBoolean("logging_enabled", AppConfig.LOGGING_ENABLED_DEFAULT);
+        enableLoggingCheckbox.setChecked(loggingEnabled);
+        enableLoggingCheckbox.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                settingsPrefs.edit().putBoolean("logging_enabled", isChecked).apply();
+                if (!isChecked) {
+                    logText.setText("Logging disabled");
+                } else {
+                    updateLog();
+                }
+            }
+        });
+        
+        // Set up log tab buttons
+        smsLogTab.setOnClickListener(v -> {
+            showingSmsLog = true;
+            smsLogTab.setBackgroundColor(getColor(R.color.md_theme_primary));
+            smsLogTab.setTextColor(getColor(R.color.white));
+            replyLogTab.setBackgroundColor(0xFFE0E0E0);
+            replyLogTab.setTextColor(0xFF666666);
+            updateLog();
+        });
+        
+        replyLogTab.setOnClickListener(v -> {
+            showingSmsLog = false;
+            replyLogTab.setBackgroundColor(getColor(R.color.md_theme_primary));
+            replyLogTab.setTextColor(getColor(R.color.white));
+            smsLogTab.setBackgroundColor(0xFFE0E0E0);
+            smsLogTab.setTextColor(0xFF666666);
+            updateLog();
+        });
         
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) 
                 != PackageManager.PERMISSION_GRANTED ||
@@ -170,8 +220,11 @@ public class MainActivity extends AppCompatActivity {
     
     private void startBackgroundService() {
         String intervalStr = intervalInput.getText().toString();
+        String replyIntervalStr = replyIntervalInput.getText().toString();
         long interval = AppConfig.DEFAULT_PROBE_INTERVAL;
+        long replyInterval = AppConfig.DEFAULT_REPLY_INTERVAL;
         
+        // Validate probe interval
         try {
             interval = Long.parseLong(intervalStr);
             if (interval < AppConfig.MIN_PROBE_INTERVAL) {
@@ -186,8 +239,31 @@ public class MainActivity extends AppCompatActivity {
             intervalInput.setText(String.valueOf(AppConfig.DEFAULT_PROBE_INTERVAL));
         }
         
+        // Validate reply interval
+        try {
+            replyInterval = Long.parseLong(replyIntervalStr);
+            if (replyInterval < AppConfig.MIN_REPLY_INTERVAL) {
+                replyInterval = AppConfig.MIN_REPLY_INTERVAL;
+                replyIntervalInput.setText(String.valueOf(AppConfig.MIN_REPLY_INTERVAL));
+            } else if (replyInterval > AppConfig.MAX_REPLY_INTERVAL) {
+                replyInterval = AppConfig.MAX_REPLY_INTERVAL;
+                replyIntervalInput.setText(String.valueOf(AppConfig.MAX_REPLY_INTERVAL));
+            }
+        } catch (Exception e) {
+            replyInterval = AppConfig.DEFAULT_REPLY_INTERVAL;
+            replyIntervalInput.setText(String.valueOf(AppConfig.DEFAULT_REPLY_INTERVAL));
+        }
+        
+        // Save intervals to preferences
+        SharedPreferences prefs = getSharedPreferences("sms_prober", MODE_PRIVATE);
+        prefs.edit()
+            .putLong("probe_interval", interval)
+            .putLong("reply_interval", replyInterval)
+            .apply();
+        
         Intent serviceIntent = new Intent(this, SmsProbeService.class);
         serviceIntent.putExtra("interval", interval * 1000);
+        serviceIntent.putExtra("reply_interval", replyInterval * 1000);
         
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(serviceIntent);
@@ -196,7 +272,7 @@ public class MainActivity extends AppCompatActivity {
         }
         
         updateStatus("Background service started");
-        addLog("Started background service (interval: " + interval + "s)");
+        addLog("Started service (probe: " + interval + "s, reply: " + replyInterval + "s)");
         updateButtonState();
     }
     
@@ -243,10 +319,28 @@ public class MainActivity extends AppCompatActivity {
     }
     
     private void updateLogsFromService() {
-        String logs = logPrefs.getString("log", "");
+        boolean loggingEnabled = settingsPrefs.getBoolean("logging_enabled", AppConfig.LOGGING_ENABLED_DEFAULT);
+        if (!loggingEnabled) {
+            logText.setText("Logging disabled");
+            return;
+        }
+        
+        String logs;
+        if (showingSmsLog) {
+            logs = logPrefs.getString("log", "");
+        } else {
+            logs = replyLogPrefs.getString("log", "");
+        }
+        
         if (!logs.isEmpty()) {
             logText.setText(logs);
+        } else {
+            logText.setText(showingSmsLog ? "No SMS activity logged yet..." : "No reply activity logged yet...");
         }
+    }
+    
+    private void updateLog() {
+        updateLogsFromService();
     }
     
     private void updateReplyStatistics() {

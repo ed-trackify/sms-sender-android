@@ -28,7 +28,7 @@ public class AppConfig {
     public static final String APP_NAME = "MEX SMS Gateway";
     
     /**
-     * Base URL for API endpoints
+     * Base URL for API endpointss
      * Do NOT include trailing slash
      * Example: "https://yourdomain.com" or "https://subdomain.yourdomain.com"
      */
@@ -77,7 +77,7 @@ public class AppConfig {
      * Minimum allowed probe interval in seconds
      * Prevents users from setting too aggressive polling
      */
-    public static final int MIN_PROBE_INTERVAL = 10; // seconds
+    public static final int MIN_PROBE_INTERVAL = 5; // seconds
     
     /**
      * Maximum allowed probe interval in seconds
@@ -85,7 +85,23 @@ public class AppConfig {
     public static final int MAX_PROBE_INTERVAL = 3600; // 1 hour
     
     /**
-     * Reply batch interval in milliseconds
+     * Default reply probe interval in seconds
+     * How often queued replies are sent to server
+     */
+    public static final int DEFAULT_REPLY_INTERVAL = 30; // seconds
+    
+    /**
+     * Minimum allowed reply probe interval in seconds
+     */
+    public static final int MIN_REPLY_INTERVAL = 5; // seconds
+    
+    /**
+     * Maximum allowed reply probe interval in seconds
+     */
+    public static final int MAX_REPLY_INTERVAL = 300; // 5 minutes
+    
+    /**
+     * Reply batch interval in milliseconds (deprecated - use DEFAULT_REPLY_INTERVAL)
      * How often queued replies are sent to server
      */
     public static final long REPLY_BATCH_INTERVAL = 30000; // 30 seconds
@@ -130,6 +146,17 @@ public class AppConfig {
      * Maximum log entries to keep in memory
      */
     public static final int MAX_LOG_ENTRIES = 100;
+    
+    /**
+     * Maximum log size in characters
+     */
+    public static final int MAX_LOG_SIZE = 10000;
+    
+    /**
+     * Enable logging by default
+     * Can be toggled at runtime via UI
+     */
+    public static final boolean LOGGING_ENABLED_DEFAULT = true;
     
     /**
      * Maximum number of recent phone numbers to track for reply correlation

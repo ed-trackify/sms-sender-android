@@ -19,13 +19,15 @@ public class ReplyQueueManager {
     private static final String REPLY_URL = AppConfig.REPLY_ENDPOINT;
     private static final String API_KEY = AppConfig.API_KEY;
     private static final int BATCH_SIZE = AppConfig.REPLY_BATCH_SIZE;
-    private static final long BATCH_INTERVAL = AppConfig.REPLY_BATCH_INTERVAL;
+    private static final long DEFAULT_BATCH_INTERVAL = AppConfig.REPLY_BATCH_INTERVAL;
     
     private static ReplyQueueManager instance;
     private Context context;
     private List<JSONObject> replyQueue;
     private Handler handler;
     private boolean isProcessing = false;
+    private long batchInterval = DEFAULT_BATCH_INTERVAL;
+    private Runnable batchProcessor;
     
     private ReplyQueueManager(Context context) {
         this.context = context.getApplicationContext();
@@ -46,6 +48,14 @@ public class ReplyQueueManager {
         replyQueue.add(reply);
         saveQueueToStorage();
         
+        try {
+            String phoneFrom = reply.optString("phone_from", "Unknown");
+            String replyType = reply.optString("reply_type", "unknown");
+            addToLog("Reply queued from " + phoneFrom + " (Type: " + replyType + ")");
+        } catch (Exception e) {
+            Log.e(TAG, "Error logging reply queue: " + e.getMessage());
+        }
+        
         // If queue is getting large, process immediately
         if (replyQueue.size() >= BATCH_SIZE) {
             processBatch();
@@ -53,13 +63,35 @@ public class ReplyQueueManager {
     }
     
     private void startBatchProcessor() {
-        handler.postDelayed(new Runnable() {
+        // Load interval from preferences
+        SharedPreferences prefs = context.getSharedPreferences("sms_prober", Context.MODE_PRIVATE);
+        long replyInterval = prefs.getLong("reply_interval", AppConfig.DEFAULT_REPLY_INTERVAL);
+        batchInterval = replyInterval * 1000; // Convert seconds to milliseconds
+        
+        // Create the batch processor runnable
+        batchProcessor = new Runnable() {
             @Override
             public void run() {
                 processBatch();
-                handler.postDelayed(this, BATCH_INTERVAL);
+                handler.postDelayed(this, batchInterval);
             }
-        }, BATCH_INTERVAL);
+        };
+        
+        handler.postDelayed(batchProcessor, batchInterval);
+        addToLog("Reply processor started (checks every " + (batchInterval/1000) + "s)");
+    }
+    
+    public void updateInterval(long intervalSeconds) {
+        // Update the batch interval
+        batchInterval = intervalSeconds * 1000;
+        
+        // Cancel current processor and restart with new interval
+        if (batchProcessor != null) {
+            handler.removeCallbacks(batchProcessor);
+            startBatchProcessor();
+        }
+        
+        addToLog("Reply interval updated to " + intervalSeconds + "s");
     }
     
     private synchronized void processBatch() {
@@ -80,6 +112,8 @@ public class ReplyQueueManager {
         
         // Save updated queue
         saveQueueToStorage();
+        
+        addToLog("Processing batch of " + batchCount + " replies (Queue remaining: " + replyQueue.size() + ")");
         
         // Send batch in background
         new Thread(new Runnable() {
@@ -124,9 +158,11 @@ public class ReplyQueueManager {
             
             if (responseCode == HttpURLConnection.HTTP_OK) {
                 Log.d(TAG, "Successfully sent " + batch.size() + " replies to server");
+                addToLog("✓ Sent " + batch.size() + " replies to server successfully");
                 updateStatistics(batch.size(), 0);
             } else {
                 Log.e(TAG, "Failed to send replies. Response code: " + responseCode);
+                addToLog("✗ Failed to send " + batch.size() + " replies (Code: " + responseCode + ")");
                 // Re-queue failed items
                 requeueFailedBatch(batch);
                 updateStatistics(0, batch.size());
@@ -136,6 +172,7 @@ public class ReplyQueueManager {
             
         } catch (Exception e) {
             Log.e(TAG, "Error sending replies: " + e.getMessage());
+            addToLog("✗ Error sending " + batch.size() + " replies: " + e.getMessage());
             // Re-queue failed items
             requeueFailedBatch(batch);
             updateStatistics(0, batch.size());
@@ -148,6 +185,7 @@ public class ReplyQueueManager {
             replyQueue.add(0, batch.get(i));
         }
         saveQueueToStorage();
+        addToLog("Re-queued " + batch.size() + " failed replies for retry");
     }
     
     private void saveQueueToStorage() {
@@ -206,5 +244,47 @@ public class ReplyQueueManager {
     
     public void forceSync() {
         processBatch();
+    }
+    
+    private void addToLog(String message) {
+        try {
+            // Check if logging is enabled
+            SharedPreferences settingsPrefs = context.getSharedPreferences("AppSettings", Context.MODE_PRIVATE);
+            boolean loggingEnabled = settingsPrefs.getBoolean("logging_enabled", AppConfig.LOGGING_ENABLED_DEFAULT);
+            if (!loggingEnabled) {
+                return;
+            }
+            
+            // Use separate log for replies
+            SharedPreferences prefs = context.getSharedPreferences("ReplyLog", Context.MODE_PRIVATE);
+            String existingLog = prefs.getString("log", "");
+            
+            // Add timestamp
+            String timestamp = new java.text.SimpleDateFormat("HH:mm:ss").format(new java.util.Date());
+            String newEntry = timestamp + " | " + message;
+            
+            // Combine with existing log
+            String updatedLog = newEntry + "\n" + existingLog;
+            
+            // Keep only last MAX_LOG_ENTRIES lines or MAX_LOG_SIZE characters, whichever is smaller
+            String[] lines = updatedLog.split("\n");
+            StringBuilder trimmedLog = new StringBuilder();
+            int lineCount = 0;
+            int charCount = 0;
+            
+            for (String line : lines) {
+                if (lineCount >= AppConfig.MAX_LOG_ENTRIES || charCount + line.length() > AppConfig.MAX_LOG_SIZE) {
+                    break;
+                }
+                trimmedLog.append(line).append("\n");
+                lineCount++;
+                charCount += line.length() + 1;
+            }
+            
+            prefs.edit().putString("log", trimmedLog.toString()).apply();
+            
+        } catch (Exception e) {
+            Log.e(TAG, "Error adding to log: " + e.getMessage());
+        }
     }
 }
