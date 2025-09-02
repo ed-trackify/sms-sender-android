@@ -77,10 +77,14 @@ captures/
 .svn/
 
 # Documentation and development files (keep only essential ones)
-*.md
 !README.md
 !CLAUDE.md
-!BACKEND_CRITICAL_CHANGES_NEEDED.md
+!BACKEND_API_UPDATE_JANUARY_2025.md
+!SERVICE_RELIABILITY_GUIDE.md
+!SMS_REPLY_HANDLER_SPECIFICATION.md
+!BACKEND_IMPLEMENTATION_CHECKLIST.md
+!INTEGRATION_TEST_GUIDE.md
+!PRODUCTION_READY_SUMMARY.md
 
 # JDK/Java installation directories and archives
 /java*/
@@ -111,3 +115,44 @@ Thumbs.db
 *.bak
 *.backup
 *~
+*.tmp
+*.temp
+*.swp
+*.swo
+*.orig
+
+# Temporary/generated files
+*.full
+*_original.*
+generate_*.py
+logo_original.png
+app/src/main/java/com/example/smssender/*.full
+
+# Personal/local configuration overrides
+local-config.properties
+personal-notes.txt
+
+# Python files (if any scripts)
+__pycache__/
+*.py[cod]
+*.pyc
+
+# Keep gradle wrapper
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+!gradlew
+!gradlew.bat
+
+# Windows specific
+desktop.ini
+$RECYCLE.BIN/
+
+# MacOS specific
+.AppleDouble
+.LSOverride
+Icon
+.DocumentRevisions-V100
+.fseventsd
+.TemporaryItems
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
