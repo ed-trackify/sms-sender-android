@@ -95,7 +95,16 @@ public class ReplyQueueManager {
     }
     
     private synchronized void processBatch() {
-        if (isProcessing || replyQueue.isEmpty()) {
+        if (isProcessing) {
+            addToLog("Reply processor: Still processing previous batch");
+            return;
+        }
+        
+        if (replyQueue.isEmpty()) {
+            addToLog("Reply processor: Queue empty, checking for replies...");
+            // Could optionally send an empty heartbeat to server here
+            // For now, just log to show it's running
+            updateStatistics();
             return;
         }
         
@@ -217,6 +226,12 @@ public class ReplyQueueManager {
         } catch (Exception e) {
             Log.e(TAG, "Error loading queue: " + e.getMessage());
         }
+    }
+    
+    private void updateStatistics() {
+        // Just update the last check time when called with no parameters
+        SharedPreferences prefs = context.getSharedPreferences("ReplyStats", Context.MODE_PRIVATE);
+        prefs.edit().putLong("last_reply_check", System.currentTimeMillis()).apply();
     }
     
     private void updateStatistics(int successCount, int failedCount) {

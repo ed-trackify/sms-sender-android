@@ -23,6 +23,8 @@ public class SmsReceiver extends BroadcastReceiver {
     
     @Override
     public void onReceive(Context context, Intent intent) {
+        logMessage(context, "SMS broadcast received");
+        
         if (Telephony.Sms.Intents.SMS_RECEIVED_ACTION.equals(intent.getAction())) {
             Bundle bundle = intent.getExtras();
             if (bundle != null) {
@@ -31,6 +33,7 @@ public class SmsReceiver extends BroadcastReceiver {
                     String format = bundle.getString("format");
                     
                     if (pdus != null) {
+                        logMessage(context, "Processing " + pdus.length + " SMS PDUs");
                         for (Object pdu : pdus) {
                             SmsMessage smsMessage;
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -40,12 +43,16 @@ public class SmsReceiver extends BroadcastReceiver {
                             }
                             
                             if (smsMessage != null) {
+                                String sender = smsMessage.getDisplayOriginatingAddress();
+                                String body = smsMessage.getMessageBody();
+                                logMessage(context, "SMS from " + sender + ": " + body);
                                 processSmsReply(context, smsMessage);
                             }
                         }
                     }
                 } catch (Exception e) {
                     Log.e(TAG, "Error processing SMS: " + e.getMessage());
+                    logMessage(context, "Error processing SMS: " + e.getMessage());
                 }
             }
         }
@@ -73,6 +80,16 @@ public class SmsReceiver extends BroadcastReceiver {
                 if (shipmentInfo != null) {
                     reply.put("shipment_id", shipmentInfo.getLong("shipment_id"));
                     reply.put("original_queue_id", shipmentInfo.getInt("queue_id"));
+                    // Include the original message we sent
+                    String originalMessage = shipmentInfo.optString("original_message", "");
+                    if (!originalMessage.isEmpty()) {
+                        reply.put("original_message", originalMessage);
+                    }
+                    // Include when we sent the original message
+                    long sentTimestamp = shipmentInfo.optLong("sent_timestamp", 0);
+                    if (sentTimestamp > 0) {
+                        reply.put("original_sent_timestamp", sentTimestamp);
+                    }
                 }
                 
                 // Classify reply type
@@ -101,6 +118,11 @@ public class SmsReceiver extends BroadcastReceiver {
     }
     
     private boolean isRelevantReply(Context context, String sender, String message) {
+        // TEMPORARY: Process ALL SMS for debugging
+        logMessage(context, "DEBUG: Processing ALL SMS (debugging mode)");
+        return true;
+        
+        /* ORIGINAL CODE - Uncomment after debugging:
         // Check if sender is in our recent SMS recipients list
         SharedPreferences prefs = context.getSharedPreferences("SmsRecipients", Context.MODE_PRIVATE);
         String recentRecipients = prefs.getString("recent_numbers", "");
@@ -112,6 +134,7 @@ public class SmsReceiver extends BroadcastReceiver {
         
         // Check if sender is in recent recipients
         return recentRecipients.contains(sender);
+        */
     }
     
     private boolean containsRelevantKeywords(String message) {

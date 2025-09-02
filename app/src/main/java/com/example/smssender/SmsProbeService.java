@@ -118,6 +118,15 @@ public class SmsProbeService extends Service {
             // Start batch status update handler
             startBatchStatusUpdater();
             
+            // Start ReplyQueueManager to ensure it's running
+            long replyInterval = 30; // default
+            if (intent != null && intent.hasExtra("reply_interval")) {
+                replyInterval = intent.getLongExtra("reply_interval", 30000) / 1000; // Convert to seconds
+            }
+            ReplyQueueManager replyManager = ReplyQueueManager.getInstance(this);
+            replyManager.updateInterval(replyInterval);
+            logMessage("Reply queue manager started with interval: " + replyInterval + "s");
+            
             // Schedule automatic restart to ensure continuous operation
             scheduleServiceRestart();
         }
@@ -299,8 +308,8 @@ public class SmsProbeService extends Service {
             // Send SMS with tracking
             sendSmsWithTracking(queueId, phone, message, shipmentId);
             
-            // Track shipment for reply correlation
-            trackShipmentForReplies(phone, shipmentId, queueId);
+            // Track shipment for reply correlation with original message
+            trackShipmentForReplies(phone, shipmentId, queueId, message);
             
         } catch (Exception e) {
             logMessage("JSON Error: " + e.getMessage());
@@ -621,13 +630,14 @@ public class SmsProbeService extends Service {
         }
     }
     
-    private void trackShipmentForReplies(String phone, long shipmentId, int queueId) {
+    private void trackShipmentForReplies(String phone, long shipmentId, int queueId, String originalMessage) {
         try {
             // Save shipment info for reply correlation
             SharedPreferences prefs = getSharedPreferences("ShipmentTracking", MODE_PRIVATE);
             JSONObject shipmentInfo = new JSONObject();
             shipmentInfo.put("shipment_id", shipmentId);
             shipmentInfo.put("queue_id", queueId);
+            shipmentInfo.put("original_message", originalMessage);
             shipmentInfo.put("sent_timestamp", System.currentTimeMillis());
             
             prefs.edit().putString(phone, shipmentInfo.toString()).apply();

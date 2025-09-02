@@ -41,6 +41,7 @@ public class MainActivity extends AppCompatActivity {
     private Button probeButton;
     private EditText intervalInput;
     private EditText replyIntervalInput;
+    private EditText phoneNumberInput;
     private TextView statusText;
     private TextView logText;
     private TextView permissionStatus;
@@ -79,6 +80,7 @@ public class MainActivity extends AppCompatActivity {
         probeButton = findViewById(R.id.probeButton);
         intervalInput = findViewById(R.id.intervalInput);
         replyIntervalInput = findViewById(R.id.replyIntervalInput);
+        phoneNumberInput = findViewById(R.id.phoneNumberInput);
         statusText = findViewById(R.id.statusText);
         logText = findViewById(R.id.logText);
         permissionStatus = findViewById(R.id.permissionStatus);
@@ -108,6 +110,11 @@ public class MainActivity extends AppCompatActivity {
         // Set default intervals from config
         intervalInput.setText(String.valueOf(AppConfig.DEFAULT_PROBE_INTERVAL));
         replyIntervalInput.setText(String.valueOf(AppConfig.DEFAULT_REPLY_INTERVAL));
+        
+        // Load saved phone number or use default
+        SharedPreferences appConfigPrefs = getSharedPreferences("AppConfig", MODE_PRIVATE);
+        String savedPhoneNumber = appConfigPrefs.getString("our_phone_number", AppConfig.DEFAULT_PHONE_NUMBER);
+        phoneNumberInput.setText(savedPhoneNumber);
         
         // Set up logging checkbox
         boolean loggingEnabled = settingsPrefs.getBoolean("logging_enabled", AppConfig.LOGGING_ENABLED_DEFAULT);
@@ -252,6 +259,13 @@ public class MainActivity extends AppCompatActivity {
         } catch (Exception e) {
             replyInterval = AppConfig.DEFAULT_REPLY_INTERVAL;
             replyIntervalInput.setText(String.valueOf(AppConfig.DEFAULT_REPLY_INTERVAL));
+        }
+        
+        // Save phone number
+        String phoneNumber = phoneNumberInput.getText().toString().trim();
+        if (!phoneNumber.isEmpty()) {
+            SharedPreferences appConfigPrefs = getSharedPreferences("AppConfig", MODE_PRIVATE);
+            appConfigPrefs.edit().putString("our_phone_number", phoneNumber).apply();
         }
         
         // Save intervals to preferences
