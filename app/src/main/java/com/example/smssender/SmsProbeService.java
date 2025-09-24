@@ -129,8 +129,11 @@ public class SmsProbeService extends Service {
             
             // Schedule automatic restart to ensure continuous operation
             scheduleServiceRestart();
+
+            // Broadcast initial statistics
+            broadcastStatistics();
         }
-        
+
         return START_STICKY; // Service will restart if killed
     }
     
@@ -208,6 +211,15 @@ public class SmsProbeService extends Service {
     private void updateNotification() {
         NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         manager.notify(NOTIFICATION_ID, createNotification());
+        broadcastStatistics();
+    }
+
+    private void broadcastStatistics() {
+        Intent intent = new Intent("com.example.smssender.UPDATE_STATISTICS");
+        intent.putExtra("sent_count", sentCounter);
+        intent.putExtra("failed_count", failedCounter);
+        intent.putExtra("delivered_count", deliveredCounter);
+        sendBroadcast(intent);
     }
     
     private void startProbing() {

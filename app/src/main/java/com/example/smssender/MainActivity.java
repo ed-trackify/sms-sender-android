@@ -23,6 +23,8 @@ import android.content.SharedPreferences;
 import android.content.Context;
 import android.app.ActivityManager;
 import android.net.Uri;
+import android.content.BroadcastReceiver;
+import android.content.IntentFilter;
 import org.json.JSONObject;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
@@ -71,6 +73,7 @@ public class MainActivity extends AppCompatActivity {
     private Handler handler = new Handler();
     private boolean isProbing = false;
     private Runnable probeRunnable;
+    private BroadcastReceiver statisticsReceiver;
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -177,7 +180,10 @@ public class MainActivity extends AppCompatActivity {
         
         // Start updating logs from service
         startLogUpdates();
-        
+
+        // Register receiver for statistics updates
+        registerStatisticsReceiver();
+
         probeButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -188,6 +194,36 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         });
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (statisticsReceiver != null) {
+            unregisterReceiver(statisticsReceiver);
+        }
+    }
+
+    private void registerStatisticsReceiver() {
+        statisticsReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if ("com.example.smssender.UPDATE_STATISTICS".equals(intent.getAction())) {
+                    sentCounter = intent.getIntExtra("sent_count", 0);
+                    failedCounter = intent.getIntExtra("failed_count", 0);
+                    int deliveredCount = intent.getIntExtra("delivered_count", 0);
+
+                    runOnUiThread(() -> {
+                        smsSentCount.setText(String.valueOf(sentCounter));
+                        smsFailedCount.setText(String.valueOf(failedCounter));
+                        smsPendingCount.setText(String.valueOf(deliveredCount));
+                    });
+                }
+            }
+        };
+
+        IntentFilter filter = new IntentFilter("com.example.smssender.UPDATE_STATISTICS");
+        registerReceiver(statisticsReceiver, filter);
     }
     
     @Override
