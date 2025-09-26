@@ -25,14 +25,14 @@ public class AppConfig {
      * Application Display Name
      * This appears in the app UI and notifications
      */
-    public static final String APP_NAME = "MEX SMS Gateway";
+    public static final String APP_NAME = "Trackify Srb Sms Bot";
     
     /**
      * Base URL for API endpointss
      * Do NOT include trailing slash
      * Example: "https://yourdomain.com" or "https://subdomain.yourdomain.com"
      */
-    public static final String BASE_URL = "https://mex.mk";
+    public static final String BASE_URL = "https://srb.trackify.net";
     
     /**
      * API Authentication Key
@@ -71,7 +71,7 @@ public class AppConfig {
      * Default probe interval in seconds
      * How often the app checks for new SMS tasks
      */
-    public static final int DEFAULT_PROBE_INTERVAL = 60; // seconds
+    public static final int DEFAULT_PROBE_INTERVAL = 10; // seconds
     
     /**
      * Minimum allowed probe interval in seconds
@@ -88,12 +88,12 @@ public class AppConfig {
      * Default reply probe interval in seconds
      * How often queued replies are sent to server
      */
-    public static final int DEFAULT_REPLY_INTERVAL = 30; // seconds
+    public static final int DEFAULT_REPLY_INTERVAL = 15; // seconds
     
     /**
      * Minimum allowed reply probe interval in seconds
      */
-    public static final int MIN_REPLY_INTERVAL = 5; // seconds
+    public static final int MIN_REPLY_INTERVAL = 10; // seconds
     
     /**
      * Maximum allowed reply probe interval in seconds
@@ -165,22 +165,22 @@ public class AppConfig {
     
     // ============================================================================
     // UI CONFIGURATION
-    // ============================================================================
+    // ============================================================================s
     
     /**
-     * App subtitle shown in the main screen
+     * App subtitle shown in the main screensv
      */
-    public static final String APP_SUBTITLE = "MEX Automated SMS Service";
+    public static final String APP_SUBTITLE = "Automatski sms bot";
     
     /**
      * Notification channel name
      */
-    public static final String NOTIFICATION_CHANNEL_NAME = "SMS Probe Service Channel";
+    public static final String NOTIFICATION_CHANNEL_NAME = "Trackify SMS Bot";
     
     /**
      * Notification channel description
      */
-    public static final String NOTIFICATION_CHANNEL_DESC = "Continuous SMS probing service";
+    public static final String NOTIFICATION_CHANNEL_DESC = "Kontinuirana SMS usluga";
     
     // ============================================================================
     // FEATURE FLAGS
@@ -226,7 +226,7 @@ public class AppConfig {
      * Application version
      * This is automatically updated during build
      */
-    public static final String APP_VERSION = "1.0.0";
+    public static final String APP_VERSION = "1.0.2";
     
     /**
      * Build timestamp

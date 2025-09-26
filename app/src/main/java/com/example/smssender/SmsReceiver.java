@@ -158,28 +158,28 @@ public class SmsReceiver extends BroadcastReceiver {
             return "pin_confirmation";
         }
         
-        // Opt-out patterns
-        if (upperMessage.matches(".*(STOP|UNSUBSCRIBE|CANCEL|QUIT|END).*")) {
+        // Opt-out patterns (Serbian: STOP, ODJAVI, PREKINI, OTKAŽI)
+        if (upperMessage.matches(".*(STOP|UNSUBSCRIBE|CANCEL|QUIT|END|ODJAVI|PREKINI|OTKAŽI|OTKAZI).*")) {
             return "opt_out";
         }
         
-        // Delivery confirmation
-        if (upperMessage.matches(".*(DELIVERED|RECEIVED|GOT IT|COLLECTED|PICKED UP).*")) {
+        // Delivery confirmation (Serbian: DOSTAVLJENO, PRIMLJENO, PREUZETO)
+        if (upperMessage.matches(".*(DELIVERED|RECEIVED|GOT IT|COLLECTED|PICKED UP|DOSTAVLJENO|PRIMLJENO|PREUZETO).*")) {
             return "delivery_confirmation";
         }
         
-        // Reschedule request
-        if (upperMessage.matches(".*(RESCHEDULE|POSTPONE|DELAY|LATER|TOMORROW).*")) {
+        // Reschedule request (Serbian: ODLOŽI, KASNIJE, SUTRA, POMERI)
+        if (upperMessage.matches(".*(RESCHEDULE|POSTPONE|DELAY|LATER|TOMORROW|ODLOŽI|ODLOZI|KASNIJE|SUTRA|POMERI).*")) {
             return "reschedule_request";
         }
         
-        // Complaint or issue
-        if (upperMessage.matches(".*(PROBLEM|ISSUE|WRONG|ERROR|MISTAKE|COMPLAINT).*")) {
+        // Complaint or issue (Serbian: PROBLEM, GREŠKA, POGREŠNO, ŽALBA)
+        if (upperMessage.matches(".*(PROBLEM|ISSUE|WRONG|ERROR|MISTAKE|COMPLAINT|GREŠKA|GRESKA|POGREŠNO|POGRESNO|ŽALBA|ZALBA).*")) {
             return "complaint";
         }
         
-        // Question
-        if (message.contains("?") || upperMessage.matches(".*(WHEN|WHERE|HOW|WHAT|WHY).*")) {
+        // Question (Serbian: KADA, GDE, KAKO, ŠTA, ZAŠTO)
+        if (message.contains("?") || upperMessage.matches(".*(WHEN|WHERE|HOW|WHAT|WHY|KADA|GDE|GDJE|KAKO|ŠTA|STA|ZAŠTO|ZASTO).*")) {
             return "general_inquiry";
         }
         

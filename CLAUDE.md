@@ -6,8 +6,8 @@ This file provides comprehensive guidance to Claude Code (claude.ai/code) when w
 
 ### To Deploy for a New Client/Project:
 1. **Update Configuration**: Edit `app/src/main/java/com/example/smssender/AppConfig.java`
-   - Set `APP_NAME` to your app name
-   - Set `BASE_URL` to your API domain (without trailing slash)
+   - Set `APP_NAME` to your app name (e.g., "SMS Kapija Srbija")
+   - Set `BASE_URL` to your API domain (without trailing slash, e.g., "https://srb.trackify.net")
    - Set `API_KEY` to your authentication key
    - Adjust timing intervals if needed
 
@@ -117,11 +117,11 @@ GET /api/sms/prober.php → Receive SMS task → Send SMS → Track delivery →
 - **BroadcastReceiver**: Intercepts all incoming SMS
 - **Reply Classification**:
   - PIN confirmation (`PIN: 1234`)
-  - Opt-out requests (`STOP`, `UNSUBSCRIBE`)
-  - Delivery confirmations (`DELIVERED`, `RECEIVED`)
-  - Reschedule requests (`POSTPONE`, `DELAY`)
-  - Complaints (`PROBLEM`, `ISSUE`)
-  - General inquiries (questions)
+  - Opt-out requests (`STOP`, `UNSUBSCRIBE`, `ODJAVI`, `PREKINI`)
+  - Delivery confirmations (`DELIVERED`, `RECEIVED`, `DOSTAVLJENO`, `PRIMLJENO`)
+  - Reschedule requests (`POSTPONE`, `DELAY`, `ODLOŽI`, `KASNIJE`)
+  - Complaints (`PROBLEM`, `ISSUE`, `GREŠKA`, `ŽALBA`)
+  - General inquiries (questions with `?` or keywords like `KADA`, `GDE`, `KAKO`)
 - **Shipment Correlation**: Links replies to original SMS
 - **Queue Management**: Sends replies to ReplyQueueManager
 
@@ -159,8 +159,8 @@ All requests include header: `X-API-Key: osafu2379jsaf`
 ```json
 Response:
 {
-  "phone": "+1234567890",
-  "message": "Your package will arrive today. PIN: 4567",
+  "phone": "+381601234567",
+  "message": "Vaš paket stiže danas. PIN: 4567",
   "queue_id": 789,
   "shipment_id": 12345
 }
@@ -171,7 +171,7 @@ Response:
 Single update:
 {
   "queue_id": 789,
-  "phone": "+1234567890",
+  "phone": "+381601234567",
   "status": "delivered",
   "sent_timestamp": 1703123456000,
   "delivered_timestamp": 1703123466000,
@@ -192,7 +192,7 @@ Status progression: `processing` → `pending` → `sent` → `delivered`/`faile
 **POST Request** - Send replies to server:
 ```json
 {
-  "phone_from": "+1234567890",
+  "phone_from": "+381601234567",
   "phone_to": "+381600000000",
   "message": "PIN: 4567",
   "received_timestamp": 1703123456000,
@@ -291,7 +291,7 @@ Status progression: `processing` → `pending` → `sent` → `delivered`/`faile
 
 ### For New Deployment:
 - [ ] Update AppConfig.java with client details
-- [ ] Set correct BASE_URL (no trailing slash)
+- [ ] Set correct BASE_URL (no trailing slash, e.g., https://srb.trackify.net)
 - [ ] Configure API_KEY
 - [ ] Adjust probe intervals if needed
 - [ ] Update app name and subtitle
@@ -350,7 +350,7 @@ sms-sender-android/
 - Material Design UI with real-time statistics
 - Configuration system for easy deployment
 - Enhanced error handling and retry logic
-- Support for mex.mk deployment configuration
+- Support for srb.trackify.net deployment configuration
 
 ### Known Limitations:
 - Maximum 160 characters per SMS (standard SMS limit)
